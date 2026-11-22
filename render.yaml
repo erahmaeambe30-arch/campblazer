@@ -1,0 +1,46 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this GitHub repo.
+#
+# ONE web service runs everything:
+#   Django REST API  +  WebSockets  +  the compiled React/TypeScript site  +  photos
+# PostgreSQL comes from Neon (free, does not expire). Paste its DIRECT connection
+# string into DATABASE_URL when Render asks. All data — destinations, services,
+# availability, reservations, users AND uploaded photos — lives in that database.
+services:
+  - type: web
+    name: campblazer
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: bash backend/render-build.sh
+    startCommand: cd backend && bash render-start.sh
+    healthCheckPath: /api/system/info/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: NODE_VERSION
+        value: "20"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: DATABASE_URL            # Neon DIRECT connection string (postgresql://...sslmode=require)
+        sync: false
+      - key: REDIS_URL               # live WebSocket events shared between the 2 worker processes
+        fromService:
+          type: keyvalue
+          name: campblazer-redis
+          property: connectionString
+      - key: DEMO_PASSWORD           # password for admin_demo / operator_demo / campers (Environment tab)
+        generateValue: true
+      - key: GUNICORN_WORKERS        # free instance has 512 MB RAM: 2 worker processes fit
+        value: "2"
+
+  # Redis (Render Key Value): carries real-time events between worker processes
+  - type: keyvalue
+    name: campblazer-redis
+    plan: free
+    region: singapore
+    ipAllowList: []                  # internal only
+    maxmemoryPolicy: noeviction
